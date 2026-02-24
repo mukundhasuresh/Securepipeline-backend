@@ -3,6 +3,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 
 const authRoutes = require("./routes/authRoutes");
+const scanRoutes = require("./routes/scanRoutes");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(cookieParser());
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/scan", scanRoutes);
 
 // Temporary protected test route
 const { protect } = require("./middleware/authMiddleware");
