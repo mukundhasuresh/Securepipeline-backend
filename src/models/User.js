@@ -15,12 +15,22 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: false,
     },
     role: {
       type: String,
       enum: ["employee", "admin"],
       default: "employee",
+    },
+
+    // GitHub OAuth fields
+    githubToken: {
+      type: String,
+      default: null,
+    },
+    githubUsername: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true }
