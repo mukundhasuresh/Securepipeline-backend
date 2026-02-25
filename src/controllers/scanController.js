@@ -4,6 +4,8 @@ const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
 
+
+// Upload + Scan
 exports.uploadAndScan = async (req, res) => {
   try {
     if (!req.file) {
@@ -15,7 +17,7 @@ exports.uploadAndScan = async (req, res) => {
 
     await fs.mkdir(extractPath);
 
-    // ✅ Extract ZIP safely
+    // Extract ZIP
     await fs
       .createReadStream(zipPath)
       .pipe(unzipper.Extract({ path: extractPath }))
@@ -23,7 +25,7 @@ exports.uploadAndScan = async (req, res) => {
 
     console.log("ZIP extracted at:", extractPath);
 
-    // ✅ Check if package.json exists
+    // Check package.json
     const packagePath = path.join(extractPath, "package.json");
 
     if (!fs.existsSync(packagePath)) {
@@ -32,14 +34,12 @@ exports.uploadAndScan = async (req, res) => {
       });
     }
 
-    // ✅ Run npm audit only
+    // Run npm audit
     exec(
       `cd "${extractPath}" && npm audit --json`,
       async (error, stdout, stderr) => {
         try {
-          if (stderr) {
-            console.error("Audit stderr:", stderr);
-          }
+          if (stderr) console.error("Audit stderr:", stderr);
 
           if (!stdout) {
             return res.status(500).json({
@@ -80,6 +80,20 @@ exports.uploadAndScan = async (req, res) => {
     );
   } catch (error) {
     console.error("Upload error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+// Scan History API
+exports.getUserScans = async (req, res) => {
+  try {
+    const scans = await Scan.find({ user: req.user.id })
+      .sort({ createdAt: -1 });
+
+    res.json(scans);
+  } catch (error) {
+    console.error("History error:", error);
     res.status(500).json({ error: error.message });
   }
 };
