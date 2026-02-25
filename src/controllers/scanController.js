@@ -5,7 +5,7 @@ const path = require("path");
 const Scan = require("../models/Scan");
 
 
-// 🔥 Upload + Scan
+// Upload + Scan
 exports.uploadAndScan = async (req, res) => {
   try {
     if (!req.file) {
@@ -34,7 +34,7 @@ exports.uploadAndScan = async (req, res) => {
       });
     }
 
-    // 🔥 Generate lockfile + run npm audit
+    // Generate lockfile + run npm audit
     exec(
       `cd "${extractPath}" && npm i --package-lock-only && npm audit --json`,
       async (error, stdout, stderr) => {
@@ -50,7 +50,6 @@ exports.uploadAndScan = async (req, res) => {
           let audit;
 
           try {
-            // Extract valid JSON from mixed npm output
             const jsonStart = stdout.indexOf("{");
 
             if (jsonStart === -1) {
@@ -69,9 +68,10 @@ exports.uploadAndScan = async (req, res) => {
           }
 
           const vulnerabilities =
-            audit.vulnerabilities ||
-            audit.metadata?.vulnerabilities ||
-            {};
+            audit.vulnerabilities &&
+            Object.keys(audit.vulnerabilities).length > 0
+              ? audit.vulnerabilities
+              : [];
 
           const scan = await Scan.create({
             user: req.user.id,
@@ -96,7 +96,7 @@ exports.uploadAndScan = async (req, res) => {
 };
 
 
-// 🔥 Scan History API
+// Scan History API
 exports.getUserScans = async (req, res) => {
   try {
     const scans = await Scan.find({ user: req.user.id })
@@ -105,6 +105,35 @@ exports.getUserScans = async (req, res) => {
     res.json(scans);
   } catch (error) {
     console.error("History error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+// Dashboard Stats API (NEW)
+exports.dashboardStats = async (req, res) => {
+  try {
+    const scans = await Scan.find({ user: req.user.id });
+
+    let total = scans.length;
+    let high = 0,
+      critical = 0,
+      moderate = 0,
+      low = 0;
+
+    scans.forEach((scan) => {
+      high += scan.severity?.high || 0;
+      critical += scan.severity?.critical || 0;
+      moderate += scan.severity?.moderate || 0;
+      low += scan.severity?.low || 0;
+    });
+
+    res.json({
+      totalScans: total,
+      vulnerabilities: { high, critical, moderate, low },
+    });
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
     res.status(500).json({ error: error.message });
   }
 };
