@@ -5,7 +5,7 @@ const path = require("path");
 const Scan = require("../models/Scan");
 
 
-// Upload + Scan
+// 🔥 Upload + Scan
 exports.uploadAndScan = async (req, res) => {
   try {
     if (!req.file) {
@@ -34,9 +34,9 @@ exports.uploadAndScan = async (req, res) => {
       });
     }
 
-    // Run npm audit
+    // 🔥 Generate lockfile + run npm audit
     exec(
-      `cd "${extractPath}" && npm audit --json`,
+      `cd "${extractPath}" && npm i --package-lock-only && npm audit --json`,
       async (error, stdout, stderr) => {
         try {
           if (stderr) console.error("Audit stderr:", stderr);
@@ -48,8 +48,19 @@ exports.uploadAndScan = async (req, res) => {
           }
 
           let audit;
+
           try {
-            audit = JSON.parse(stdout);
+            // Extract valid JSON from mixed npm output
+            const jsonStart = stdout.indexOf("{");
+
+            if (jsonStart === -1) {
+              return res.json({
+                message: "No vulnerabilities found",
+              });
+            }
+
+            const jsonString = stdout.slice(jsonStart);
+            audit = JSON.parse(jsonString);
           } catch (parseError) {
             console.error("JSON parse error:", parseError);
             return res.status(500).json({
@@ -85,7 +96,7 @@ exports.uploadAndScan = async (req, res) => {
 };
 
 
-// Scan History API
+// 🔥 Scan History API
 exports.getUserScans = async (req, res) => {
   try {
     const scans = await Scan.find({ user: req.user.id })
