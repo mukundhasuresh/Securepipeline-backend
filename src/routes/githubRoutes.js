@@ -7,7 +7,7 @@ const { protect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-router.get("/connect", protect, connectGithub);
+router.get("/connect", connectGithub);
 router.get("/callback", githubCallback);
 
 module.exports = router;
