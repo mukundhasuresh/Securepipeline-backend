@@ -7,6 +7,28 @@ const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
 
+// Score calculation
+const calculateScore = (severity = {}) => {
+  const critical = severity.critical || 0;
+  const high = severity.high || 0;
+  const moderate = severity.moderate || 0;
+  const low = severity.low || 0;
+
+  let deduction =
+    critical * 10 + high * 7 + moderate * 4 + low * 1;
+
+  let score = Math.max(0, 100 - deduction);
+
+  let riskLevel = "Low";
+
+  if (score < 40) riskLevel = "Critical";
+  else if (score < 60) riskLevel = "High";
+  else if (score < 80) riskLevel = "Medium";
+
+  return { score, riskLevel };
+};
+
+
 // Step 1: Redirect user to GitHub
 exports.connectGithub = (req, res) => {
   const url = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&scope=repo`;
@@ -133,11 +155,21 @@ exports.scanRepo = async (req, res) => {
           const jsonStart = stdout.indexOf("{");
           const audit = JSON.parse(stdout.slice(jsonStart));
 
+          const vulnerabilities =
+            audit.vulnerabilities ||
+            audit.metadata?.vulnerabilities ||
+            {};
+
+          const severity = audit.metadata?.vulnerabilities || {};
+
+          const { score, riskLevel } = calculateScore(severity);
+
           const scan = await Scan.create({
             user: req.user.id,
-            vulnerabilities:
-              audit.vulnerabilities || audit.metadata?.vulnerabilities,
-            severity: audit.metadata?.vulnerabilities,
+            vulnerabilities,
+            severity,
+            securityScore: score,
+            riskLevel,
           });
 
           res.json({

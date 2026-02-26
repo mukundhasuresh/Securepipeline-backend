@@ -6,6 +6,27 @@ const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
 
+// Score calculation
+const calculateScore = (severity = {}) => {
+  const critical = severity.critical || 0;
+  const high = severity.high || 0;
+  const moderate = severity.moderate || 0;
+  const low = severity.low || 0;
+
+  let deduction =
+    critical * 10 + high * 7 + moderate * 4 + low * 1;
+
+  let score = Math.max(0, 100 - deduction);
+
+  let riskLevel = "Low";
+
+  if (score < 40) riskLevel = "Critical";
+  else if (score < 60) riskLevel = "High";
+  else if (score < 80) riskLevel = "Medium";
+
+  return { score, riskLevel };
+};
+
 exports.githubWebhook = async (req, res) => {
   try {
     console.log("GitHub Webhook received");
@@ -13,7 +34,7 @@ exports.githubWebhook = async (req, res) => {
     const event = req.headers["x-github-event"] || "unknown";
     console.log("Event type:", event);
 
-    // Handle ping event (GitHub verification)
+    // Handle ping event
     if (event === "ping") {
       console.log("Webhook verified by GitHub");
       return res.status(200).send("Ping OK");
@@ -30,7 +51,7 @@ exports.githubWebhook = async (req, res) => {
 
       console.log("Push detected for:", repoFullName);
 
-      // Find mapped project
+      // Find project mapping
       const project = await Project.findOne({ repoFullName });
 
       if (!project) {
@@ -46,7 +67,7 @@ exports.githubWebhook = async (req, res) => {
         return res.status(200).send("User not configured");
       }
 
-      // Clone repository
+      // Clone repo
       const clonePath = path.join(
         "uploads",
         "webhook",
@@ -56,14 +77,13 @@ exports.githubWebhook = async (req, res) => {
       await fs.mkdirp(clonePath);
 
       const git = simpleGit();
-
       const repoUrl = `https://${user.githubToken}@github.com/${repoFullName}.git`;
 
       console.log("Cloning:", repoFullName);
 
       await git.clone(repoUrl, clonePath);
 
-      // Run audit in background (non-blocking)
+      // Run audit
       exec(
         `cd "${clonePath}" && npm install --package-lock-only && npm audit --json`,
         async (error, stdout, stderr) => {
@@ -76,11 +96,21 @@ exports.githubWebhook = async (req, res) => {
             const jsonStart = stdout.indexOf("{");
             const audit = JSON.parse(stdout.slice(jsonStart));
 
+            const vulnerabilities =
+              audit.vulnerabilities ||
+              audit.metadata?.vulnerabilities ||
+              {};
+
+            const severity = audit.metadata?.vulnerabilities || {};
+
+            const { score, riskLevel } = calculateScore(severity);
+
             await Scan.create({
               user: user._id,
-              vulnerabilities:
-                audit.vulnerabilities || audit.metadata?.vulnerabilities,
-              severity: audit.metadata?.vulnerabilities,
+              vulnerabilities,
+              severity,
+              securityScore: score,
+              riskLevel,
             });
 
             console.log("Auto scan completed");

@@ -4,6 +4,27 @@ const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
 
+// Score calculation
+const calculateScore = (severity = {}) => {
+  const critical = severity.critical || 0;
+  const high = severity.high || 0;
+  const moderate = severity.moderate || 0;
+  const low = severity.low || 0;
+
+  let deduction =
+    critical * 10 + high * 7 + moderate * 4 + low * 1;
+
+  let score = Math.max(0, 100 - deduction);
+
+  let riskLevel = "Low";
+
+  if (score < 40) riskLevel = "Critical";
+  else if (score < 60) riskLevel = "High";
+  else if (score < 80) riskLevel = "Medium";
+
+  return { score, riskLevel };
+};
+
 
 // Upload + Scan
 exports.uploadAndScan = async (req, res) => {
@@ -73,10 +94,16 @@ exports.uploadAndScan = async (req, res) => {
               ? audit.vulnerabilities
               : [];
 
+          const severity = audit.metadata?.vulnerabilities || {};
+
+          const { score, riskLevel } = calculateScore(severity);
+
           const scan = await Scan.create({
             user: req.user.id,
             vulnerabilities,
-            severity: audit.metadata?.vulnerabilities || {},
+            severity,
+            securityScore: score,
+            riskLevel,
           });
 
           res.json({
@@ -110,7 +137,7 @@ exports.getUserScans = async (req, res) => {
 };
 
 
-// Dashboard Stats API (NEW)
+// Dashboard Stats API
 exports.dashboardStats = async (req, res) => {
   try {
     const scans = await Scan.find({ user: req.user.id });
