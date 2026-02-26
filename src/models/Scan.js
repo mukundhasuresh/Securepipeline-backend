@@ -13,6 +13,10 @@ const scanSchema = new mongoose.Schema(
       high: Number,
       critical: Number,
     },
+
+    // New fields
+    securityScore: Number,
+    riskLevel: String,
   },
   { timestamps: true }
 );
