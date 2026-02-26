@@ -5,6 +5,7 @@ const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/authRoutes");
 const scanRoutes = require("./routes/scanRoutes");
 const githubRoutes = require("./routes/githubRoutes");
+const webhookRoutes = require("./routes/webhookRoutes"); 
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/scan", scanRoutes);
 app.use("/api/github", githubRoutes);
+app.use("/api/webhook", webhookRoutes); 
 
 // Temporary protected test route
 const { protect } = require("./middleware/authMiddleware");
