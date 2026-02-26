@@ -1,5 +1,6 @@
 const axios = require("axios");
 const User = require("../models/User");
+const Project = require("../models/Project"); 
 const simpleGit = require("simple-git");
 const fs = require("fs-extra");
 const { exec } = require("child_process");
@@ -58,6 +59,31 @@ exports.githubCallback = async (req, res) => {
   }
 };
 
+// STEP 2 — Save selected repo
+exports.selectRepo = async (req, res) => {
+  try {
+    const { repoName, repoFullName } = req.body;
+
+    if (!repoName || !repoFullName) {
+      return res.status(400).json({ message: "Repository details required" });
+    }
+
+    const project = await Project.create({
+      user: req.user.id,
+      repoName,
+      repoFullName,
+    });
+
+    res.json({
+      message: "Repository connected successfully",
+      project,
+    });
+  } catch (error) {
+    console.error("Select repo error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 // Step 3: Scan GitHub repository
 exports.scanRepo = async (req, res) => {
   try {
@@ -74,19 +100,16 @@ exports.scanRepo = async (req, res) => {
     }
 
     const clonePath = path.join("uploads", "repos", Date.now().toString());
-
     await fs.mkdirp(clonePath);
 
     const git = simpleGit();
 
-    // NOTE: token-based clone
     const repoUrl = `https://${user.githubToken}@github.com/${user.githubUsername}/${repo}.git`;
 
     console.log("Cloning repo:", repoUrl);
 
     await git.clone(repoUrl, clonePath);
 
-    // Check if Node project
     const packagePath = path.join(clonePath, "package.json");
 
     if (!fs.existsSync(packagePath)) {
@@ -95,7 +118,6 @@ exports.scanRepo = async (req, res) => {
       });
     }
 
-    // Generate lockfile + audit
     exec(
       `cd "${clonePath}" && npm i --package-lock-only && npm audit --json`,
       async (error, stdout, stderr) => {
@@ -108,7 +130,6 @@ exports.scanRepo = async (req, res) => {
             });
           }
 
-          // Extract JSON safely
           const jsonStart = stdout.indexOf("{");
           const audit = JSON.parse(stdout.slice(jsonStart));
 
