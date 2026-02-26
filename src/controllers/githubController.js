@@ -28,6 +28,23 @@ const calculateScore = (severity = {}) => {
   return { score, riskLevel };
 };
 
+// Recursive package.json search
+const findPackageJson = async (dir) => {
+  const files = await fs.readdir(dir);
+
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    const stat = await fs.stat(fullPath);
+
+    if (stat.isDirectory()) {
+      const result = await findPackageJson(fullPath);
+      if (result) return result;
+    } else if (file === "package.json") {
+      return fullPath;
+    }
+  }
+  return null;
+};
 
 // Step 1: Redirect user to GitHub
 exports.connectGithub = (req, res) => {
@@ -132,16 +149,19 @@ exports.scanRepo = async (req, res) => {
 
     await git.clone(repoUrl, clonePath);
 
-    const packagePath = path.join(clonePath, "package.json");
+    // Find package.json anywhere
+    const packagePath = await findPackageJson(clonePath);
 
-    if (!fs.existsSync(packagePath)) {
+    if (!packagePath) {
       return res.status(400).json({
-        message: "Repository is not a Node.js project",
+        message: "No Node.js project found in repository",
       });
     }
 
+    const projectDir = path.dirname(packagePath);
+
     exec(
-      `cd "${clonePath}" && npm i --package-lock-only && npm audit --json`,
+      `cd "${projectDir}" && npm i --package-lock-only && npm audit --json`,
       async (error, stdout, stderr) => {
         try {
           if (stderr) console.log(stderr);
