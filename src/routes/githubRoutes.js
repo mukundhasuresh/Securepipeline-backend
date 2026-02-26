@@ -2,6 +2,7 @@ const express = require("express");
 const {
   connectGithub,
   githubCallback,
+  scanRepo,
 } = require("../controllers/githubController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -12,5 +13,8 @@ router.get("/connect", protect, connectGithub);
 
 // Callback must also be protected so req.user exists
 router.get("/callback", protect, githubCallback);
+
+// Scan GitHub repository
+router.post("/scan", protect, scanRepo);
 
 module.exports = router;
