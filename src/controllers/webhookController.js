@@ -5,6 +5,7 @@ const fs = require("fs-extra");
 const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
+const { sendAlert } = require("../utils/email");
 
 // Score calculation
 const calculateScore = (severity = {}) => {
@@ -27,6 +28,24 @@ const calculateScore = (severity = {}) => {
   return { score, riskLevel };
 };
 
+// Recursive search for package.json
+const findPackageJson = async (dir) => {
+  const files = await fs.readdir(dir);
+
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    const stat = await fs.stat(fullPath);
+
+    if (stat.isDirectory()) {
+      const result = await findPackageJson(fullPath);
+      if (result) return result;
+    } else if (file === "package.json") {
+      return fullPath;
+    }
+  }
+  return null;
+};
+
 exports.githubWebhook = async (req, res) => {
   try {
     console.log("GitHub Webhook received");
@@ -34,18 +53,18 @@ exports.githubWebhook = async (req, res) => {
     const event = req.headers["x-github-event"] || "unknown";
     console.log("Event type:", event);
 
-    // Handle ping event
+    // GitHub verification
     if (event === "ping") {
       console.log("Webhook verified by GitHub");
       return res.status(200).send("Ping OK");
     }
 
-    // Handle push event
+    // Push event
     if (event === "push") {
       const repoFullName = req.body?.repository?.full_name;
 
       if (!repoFullName) {
-        console.log("Push event but no repository found");
+        console.log("No repository info");
         return res.status(200).send("No repository info");
       }
 
@@ -55,7 +74,7 @@ exports.githubWebhook = async (req, res) => {
       const project = await Project.findOne({ repoFullName });
 
       if (!project) {
-        console.log("Repository not connected in system");
+        console.log("Repository not connected");
         return res.status(200).send("Repo not connected");
       }
 
@@ -83,10 +102,20 @@ exports.githubWebhook = async (req, res) => {
 
       await git.clone(repoUrl, clonePath);
 
+      // Find Node project
+      const packagePath = await findPackageJson(clonePath);
+
+      if (!packagePath) {
+        console.log("No Node project found");
+        return res.status(200).send("No Node project found");
+      }
+
+      const projectDir = path.dirname(packagePath);
+
       // Run audit
       exec(
-        `cd "${clonePath}" && npm install --package-lock-only && npm audit --json`,
-        async (error, stdout, stderr) => {
+        `cd "${projectDir}" && npm install --package-lock-only && npm audit --json`,
+        async (error, stdout) => {
           try {
             if (!stdout) {
               console.log("Audit failed or empty");
@@ -104,6 +133,13 @@ exports.githubWebhook = async (req, res) => {
             const severity = audit.metadata?.vulnerabilities || {};
 
             const { score, riskLevel } = calculateScore(severity);
+
+            // Send alert for High or Critical risk
+            if (riskLevel === "High" || riskLevel === "Critical") {
+              if (user.email) {
+                await sendAlert(user.email, score, riskLevel);
+              }
+            }
 
             await Scan.create({
               user: user._id,
