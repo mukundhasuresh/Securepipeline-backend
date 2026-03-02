@@ -6,6 +6,7 @@ const fs = require("fs-extra");
 const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
+const { sendAlert } = require("../utils/email");
 
 // Score calculation
 const calculateScore = (severity = {}) => {
@@ -149,7 +150,7 @@ exports.scanRepo = async (req, res) => {
 
     await git.clone(repoUrl, clonePath);
 
-    // Find package.json anywhere
+    // Find Node project
     const packagePath = await findPackageJson(clonePath);
 
     if (!packagePath) {
@@ -183,6 +184,13 @@ exports.scanRepo = async (req, res) => {
           const severity = audit.metadata?.vulnerabilities || {};
 
           const { score, riskLevel } = calculateScore(severity);
+
+          // Send alert if High or Critical
+          if (riskLevel === "High" || riskLevel === "Critical") {
+            if (user.email) {
+              await sendAlert(user.email, score, riskLevel);
+            }
+          }
 
           const scan = await Scan.create({
             user: req.user.id,
