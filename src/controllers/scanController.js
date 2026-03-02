@@ -3,6 +3,8 @@ const fs = require("fs-extra");
 const { exec } = require("child_process");
 const path = require("path");
 const Scan = require("../models/Scan");
+const User = require("../models/User");
+const { sendAlert } = require("../utils/email");
 
 // Score calculation
 const calculateScore = (severity = {}) => {
@@ -55,7 +57,7 @@ exports.uploadAndScan = async (req, res) => {
       });
     }
 
-    // Generate lockfile + run npm audit
+    // Run npm audit
     exec(
       `cd "${extractPath}" && npm i --package-lock-only && npm audit --json`,
       async (error, stdout, stderr) => {
@@ -97,6 +99,14 @@ exports.uploadAndScan = async (req, res) => {
           const severity = audit.metadata?.vulnerabilities || {};
 
           const { score, riskLevel } = calculateScore(severity);
+
+          // Send alert if high or critical
+          if (riskLevel === "High" || riskLevel === "Critical") {
+            const user = await User.findById(req.user.id);
+            if (user?.email) {
+              await sendAlert(user.email, score, riskLevel);
+            }
+          }
 
           const scan = await Scan.create({
             user: req.user.id,
